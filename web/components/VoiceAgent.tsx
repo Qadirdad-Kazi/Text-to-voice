@@ -23,11 +23,6 @@ export default function VoiceAgent() {
   const [realtimePreview, setRealtimePreview] = useState(false)
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
   const [multiLanguageMode, setMultiLanguageMode] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [upliftApiKey, setUpliftApiKey] = useState('')
-  const [openaiApiKey, setOpenaiApiKey] = useState('')
-  const [currentSettings, setCurrentSettings] = useState<any>(null)
-  const [isSavingSettings, setIsSavingSettings] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: number]: HTMLAudioElement }>({})
@@ -50,63 +45,9 @@ export default function VoiceAgent() {
     }
   }, [darkMode])
 
-  // Load current settings when settings modal opens
-  useEffect(() => {
-    if (showSettings) {
-      loadCurrentSettings()
-    }
-  }, [showSettings])
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  // Load current API key status
-  const loadCurrentSettings = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/settings/current')
-      const data = await response.json()
-      setCurrentSettings(data)
-    } catch (error) {
-      console.error('Failed to load settings:', error)
-    }
-  }
-
-  // Save API keys
-  const saveApiKeys = async () => {
-    if (!upliftApiKey && !openaiApiKey) {
-      alert('Please enter at least one API key')
-      return
-    }
-
-    setIsSavingSettings(true)
-    try {
-      const params = new URLSearchParams()
-      if (upliftApiKey) params.append('uplift_api_key', upliftApiKey)
-      if (openaiApiKey) params.append('openai_api_key', openaiApiKey)
-
-      const response = await fetch(`http://localhost:8000/api/settings/update-keys?${params}`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to update keys: ${response.status}`)
-      }
-
-      const result = await response.json()
-      alert(`✅ ${result.message}`)
-      
-      // Clear input fields and reload settings
-      setUpliftApiKey('')
-      setOpenaiApiKey('')
-      await loadCurrentSettings()
-    } catch (error: any) {
-      console.error('Settings update error:', error)
-      alert(`❌ Failed to update API keys: ${error.message}`)
-    } finally {
-      setIsSavingSettings(false)
-    }
-  }
 
   // Available Uplift AI voices
   const availableVoices = [
@@ -599,37 +540,22 @@ export default function VoiceAgent() {
           </h2>
           <p className="text-blue-100 mt-2">Convert your text to natural-sounding speech in multiple languages</p>
           
-          {/* Top Right Buttons */}
-          <div className="absolute top-6 right-6 flex gap-2">
-            {/* Settings Button */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full transition-all duration-300 group"
-              title="API Settings"
-            >
-              <svg className="w-6 h-6 text-white group-hover:rotate-90 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="absolute top-6 right-6 p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full transition-all duration-300 group"
+            title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {darkMode ? (
+              <svg className="w-6 h-6 text-yellow-300 group-hover:rotate-180 transition-transform duration-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
               </svg>
-            </button>
-            
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full transition-all duration-300 group"
-              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            >
-              {darkMode ? (
-                <svg className="w-6 h-6 text-yellow-300 group-hover:rotate-180 transition-transform duration-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6 text-white group-hover:rotate-180 transition-transform duration-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                </svg>
-              )}
-            </button>
-          </div>
+            ) : (
+              <svg className="w-6 h-6 text-white group-hover:rotate-180 transition-transform duration-500" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+              </svg>
+            )}
+          </button>
         </div>
 
         <div className="p-8 space-y-6">
@@ -944,142 +870,6 @@ export default function VoiceAgent() {
           )}
         </div>
       </div>
-
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'} rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border-2 transform transition-all`}>
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-t-2xl">
-              <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  API Settings
-                </h3>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                  title="Close"
-                >
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
-              {/* Current Status */}
-              {currentSettings && (
-                <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} space-y-2`}>
-                  <h4 className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'} mb-3`}>📊 Current API Status</h4>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>🚀 Uplift AI:</span>
-                    <div className="flex items-center gap-2">
-                      <code className={`px-3 py-1 rounded text-sm ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-white text-gray-800'}`}>
-                        {currentSettings.uplift_api_key}
-                      </code>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${currentSettings.uplift_active ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-                        {currentSettings.uplift_active ? '✓ Active' : '✗ Inactive'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>🤖 OpenAI:</span>
-                    <div className="flex items-center gap-2">
-                      <code className={`px-3 py-1 rounded text-sm ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-white text-gray-800'}`}>
-                        {currentSettings.openai_api_key}
-                      </code>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${currentSettings.openai_active ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white'}`}>
-                        {currentSettings.openai_active ? '✓ Active' : '⚠ Fallback'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Info Box */}
-              <div className={`p-4 rounded-lg ${darkMode ? 'bg-blue-900/30 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
-                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                  💡 <strong>Tip:</strong> Update your API keys below. Changes are saved immediately and applied to new requests.
-                </p>
-              </div>
-
-              {/* Uplift AI Key Input */}
-              <div>
-                <label className={`block font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'} mb-2`}>
-                  🚀 Uplift AI API Key
-                </label>
-                <input
-                  type="password"
-                  value={upliftApiKey}
-                  onChange={(e) => setUpliftApiKey(e.target.value)}
-                  placeholder="sk_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className={`w-full px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'} focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors font-mono text-sm`}
-                />
-                <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Get your key from: <a href="https://www.upliftai.org/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">upliftai.org</a>
-                </p>
-              </div>
-
-              {/* OpenAI Key Input */}
-              <div>
-                <label className={`block font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'} mb-2`}>
-                  🤖 OpenAI API Key (Fallback)
-                </label>
-                <input
-                  type="password"
-                  value={openaiApiKey}
-                  onChange={(e) => setOpenaiApiKey(e.target.value)}
-                  placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className={`w-full px-4 py-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'} focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors font-mono text-sm`}
-                />
-                <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Get your key from: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">platform.openai.com</a>
-                </p>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className={`p-6 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'} rounded-b-2xl flex gap-3`}>
-              <button
-                onClick={() => setShowSettings(false)}
-                className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${darkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'}`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveApiKeys}
-                disabled={isSavingSettings}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
-              >
-                {isSavingSettings ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Save Changes
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
