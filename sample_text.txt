@@ -1,0 +1,12 @@
+Welcome to our Text to Speech demo!
+
+This is a sample text file with multiple paragraphs. Each paragraph will be converted to audio automatically.
+
+یہ ایک اردو پیراگراف ہے۔ یہ آپ کی زبان میں تبدیل ہو جائے گا۔
+
+Technology is amazing! It allows us to communicate across languages and formats.
+
+آپ کا استقبال ہے۔ یہ ٹیکنالوجی بہت اچھی ہے۔
+
+Try uploading this file to see the batch processing feature in action!
+
