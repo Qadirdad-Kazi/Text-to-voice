@@ -119,8 +119,13 @@ export default function VoiceAgent() {
   }
 
   const synthesizeAudio = async (text: string, lang: string): Promise<{ blob: Blob, url: string, provider: string } | null> => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    
+    const API_URL = process.env.NEXT_PUBLIC_API_URL
+
+    if (!API_URL) {
+      alert('Missing environment variable: NEXT_PUBLIC_API_URL. Please set this in `web/.env.local` before running the app.')
+      return null
+    }
+
     try {
       const resp = await fetch(`${API_URL}/api/tts`, {
         method: 'POST',

@@ -43,21 +43,64 @@ app.add_middleware(
 # Environment variables
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-LIVEKIT_URL = os.getenv("LIVEKIT_URL", "wss://your-livekit-server.com")
+# Do not hardcode a LiveKit URL; require configuration via env var when deploying.
+LIVEKIT_URL = os.getenv("LIVEKIT_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 UPLIFT_API_KEY = os.getenv("UPLIFT_API_KEY")
+# Optional override for Uplift API base URL (keeps the endpoint configurable)
+UPLIFT_API_URL = os.getenv("UPLIFT_API_URL", "https://api.upliftai.org")
 DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
 USE_UPLIFT_TTS = os.getenv("USE_UPLIFT_TTS", "false").lower() == "true"
 
 # Configure OpenAI
 openai.api_key = OPENAI_API_KEY
+if OPENAI_BASE_URL:
+    try:
+        openai.base_url = OPENAI_BASE_URL
+        logger.info(f"Using custom OpenAI base URL: {OPENAI_BASE_URL}")
+    except Exception:
+        logger.warning("Failed to set OpenAI base URL; proceeding with default")
+
+# Track if a key is present; warn if format is unusual but don't block usage
+OPENAI_KEY_PRESENT = bool(OPENAI_API_KEY)
+OPENAI_FORMAT_OK = bool(OPENAI_API_KEY and OPENAI_API_KEY.startswith("sk-"))
+
+# Supported OpenAI voices
+OPENAI_VOICES = {"alloy", "nova", "shimmer"}
+
+def normalize_openai_voice(requested_voice: Optional[str], language: str) -> str:
+    if requested_voice and requested_voice in OPENAI_VOICES:
+        return requested_voice
+    mapped = VOICE_MAPPING.get(language)
+    if mapped in OPENAI_VOICES:
+        return mapped
+    return "alloy"
+
+def _mask_key(k: Optional[str]) -> str:
+    if not k:
+        return "<none>"
+    if len(k) <= 8:
+        return "*" * len(k)
+    return k[:6] + "…" + k[-4:]
+
+if not OPENAI_KEY_PRESENT:
+    logger.warning("OPENAI_API_KEY is missing. Set it in server/.env to enable OpenAI features.")
+else:
+    if not OPENAI_FORMAT_OK:
+        logger.warning("OPENAI_API_KEY has an unexpected format. Proceeding anyway, but authentication may fail.")
+    logger.info(f"OpenAI key present: {_mask_key(OPENAI_API_KEY)}")
 
 # Initialize Uplift AI client if enabled
 uplift_client = None
 if USE_UPLIFT_TTS and UPLIFT_API_KEY:
-    from uplift_client import UpliftWebSocketClient
-    uplift_client = UpliftWebSocketClient(UPLIFT_API_KEY)
-    logger.info("Uplift AI WebSocket TTS enabled")
+    try:
+        from uplift_client import UpliftWebSocketClient
+        uplift_client = UpliftWebSocketClient(UPLIFT_API_KEY)
+        logger.info("Uplift AI WebSocket TTS enabled")
+    except ImportError:
+        uplift_client = None
+        logger.warning("Uplift WebSocket client not installed; realtime Uplift TTS disabled. Using REST fallback when available.")
 
 # Pydantic models
 class TTSRequest(BaseModel):
@@ -113,7 +156,7 @@ async def root():
         "service": "LiveKit Voice Agent API",
         "languages": ["English", "Urdu", "Sindhi"],
         "uplift_tts_enabled": USE_UPLIFT_TTS and uplift_client is not None,
-        "openai_configured": OPENAI_API_KEY and OPENAI_API_KEY != "sk-placeholder"
+        "openai_configured": OPENAI_KEY_PRESENT
     }
 
 @app.get("/api/health")
@@ -124,10 +167,12 @@ async def health_check():
         "uplift_ai": {
             "enabled": USE_UPLIFT_TTS,
             "client_initialized": uplift_client is not None,
-            "connected": uplift_client.connected if uplift_client else False
+            "connected": uplift_client.connected if uplift_client else False,
+            "ready": bool(USE_UPLIFT_TTS and UPLIFT_API_KEY)
         },
         "openai": {
-            "configured": bool(OPENAI_API_KEY and OPENAI_API_KEY != "sk-placeholder")
+            "configured": OPENAI_KEY_PRESENT,
+            "base_url": OPENAI_BASE_URL or "https://api.openai.com/v1"
         },
         "livekit": {
             "available": LIVEKIT_AVAILABLE,
@@ -193,7 +238,7 @@ async def text_to_speech(request: TTSRequest):
                 
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
-                        'https://api.upliftai.org/v1/synthesis/text-to-speech',
+                        f"{UPLIFT_API_URL}/v1/synthesis/text-to-speech",
                         headers={
                             'Authorization': f'Bearer {UPLIFT_API_KEY}',
                             'Content-Type': 'application/json'
@@ -230,22 +275,32 @@ async def text_to_speech(request: TTSRequest):
                 logger.info("Attempting fallback to OpenAI...")
                 # Fall through to OpenAI
         
-        # Use OpenAI TTS API (default or fallback)
-        if not OPENAI_API_KEY or OPENAI_API_KEY == "sk-placeholder":
+        # If Uplift is enabled but no key, report clearly instead of falling back
+        if USE_UPLIFT_TTS and not UPLIFT_API_KEY:
             raise HTTPException(
                 status_code=503,
-                detail="TTS service unavailable. Please configure OPENAI_API_KEY or fix Uplift AI configuration."
+                detail="Uplift TTS is enabled but UPLIFT_API_KEY is missing. Set UPLIFT_API_KEY in server/.env or disable USE_UPLIFT_TTS."
             )
-        
-        voice = request.voice or VOICE_MAPPING.get(request.language, "alloy")
-        
+
+        # Use OpenAI TTS API (default or fallback)
+        if not OPENAI_KEY_PRESENT:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service unavailable. Missing OPENAI_API_KEY in server/.env."
+            )
+
+        voice = normalize_openai_voice(request.voice, request.language)
+
         logger.info(f"Using OpenAI TTS with voice: {voice}")
-        response = openai.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=request.text,
-            response_format="mp3"
-        )
+        try:
+            response = openai.audio.speech.create(
+                model="tts-1",
+                voice=voice,
+                input=request.text,
+                response_format="mp3"
+            )
+        except openai.AuthenticationError as auth_err:
+            raise HTTPException(status_code=401, detail=f"OpenAI authentication failed: {auth_err}")
         
         audio_content = response.content
         import base64
@@ -358,24 +413,34 @@ async def chat_completion(request: ChatRequest):
             except Exception as uplift_error:
                 logger.warning(f"Uplift AI TTS failed in chat, using OpenAI: {uplift_error}")
                 # Fallback to OpenAI
-                voice = VOICE_MAPPING.get(language, "alloy")
+                if not OPENAI_KEY_PRESENT:
+                    raise HTTPException(status_code=503, detail="Chat TTS unavailable. Missing OPENAI_API_KEY.")
+                voice = normalize_openai_voice(None, language)
+                try:
+                    audio_response = openai.audio.speech.create(
+                        model="tts-1",
+                        voice=voice,
+                        input=response_text,
+                        response_format="mp3"
+                    )
+                except openai.AuthenticationError as auth_err:
+                    raise HTTPException(status_code=401, detail=f"OpenAI authentication failed: {auth_err}")
+                import base64
+                audio_base64 = base64.b64encode(audio_response.content).decode('utf-8')
+        else:
+            # Use OpenAI TTS
+            if not OPENAI_KEY_PRESENT:
+                raise HTTPException(status_code=503, detail="Chat TTS unavailable. Missing OPENAI_API_KEY.")
+            voice = normalize_openai_voice(None, language)
+            try:
                 audio_response = openai.audio.speech.create(
                     model="tts-1",
                     voice=voice,
                     input=response_text,
                     response_format="mp3"
                 )
-                import base64
-                audio_base64 = base64.b64encode(audio_response.content).decode('utf-8')
-        else:
-            # Use OpenAI TTS
-            voice = VOICE_MAPPING.get(language, "alloy")
-            audio_response = openai.audio.speech.create(
-                model="tts-1",
-                voice=voice,
-                input=response_text,
-                response_format="mp3"
-            )
+            except openai.AuthenticationError as auth_err:
+                raise HTTPException(status_code=401, detail=f"OpenAI authentication failed: {auth_err}")
             import base64
             audio_base64 = base64.b64encode(audio_response.content).decode('utf-8')
         
