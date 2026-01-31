@@ -9,11 +9,12 @@ interface Message {
   audioUrl?: string
   audioBlob?: Blob
   provider?: string
+  emotion?: string
+  emotionConfidence?: number
 }
 
 export default function VoiceAgent() {
   const [language, setLanguage] = useState<string>('English')
-  const [selectedVoice, setSelectedVoice] = useState<string>('v_8eelc901')
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0)
   const [messages, setMessages] = useState<Message[]>([])
   const [textInput, setTextInput] = useState<string>('')
@@ -23,6 +24,11 @@ export default function VoiceAgent() {
   const [realtimePreview, setRealtimePreview] = useState(false)
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
   const [multiLanguageMode, setMultiLanguageMode] = useState(false)
+  
+  // Emotion control states
+  const [emotionMode, setEmotionMode] = useState<string>('auto') // auto, neutral, happy, sad, angry, calm, excited
+  const [showEmotionAnalysis, setShowEmotionAnalysis] = useState(false)
+  const [detectedEmotion, setDetectedEmotion] = useState<any>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: number]: HTMLAudioElement }>({})
@@ -49,12 +55,15 @@ export default function VoiceAgent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Available Uplift AI voices
-  const availableVoices = [
-    { id: 'v_8eelc901', name: '🎓 Info/Education', description: 'Clear and easy to understand - Best for articles and tutorials' },
-    { id: 'v_30s70t3a', name: '📰 Nostalgic News', description: 'Classic Pakistani news voice - Professional and calm' },
-    { id: 'v_yypgzenx', name: '📖 Dada Jee', description: 'Deep storytelling voice - Suspenseful and engaging' },
-    { id: 'v_kwmp7zxt', name: '⚡ Gen Z', description: 'Fast and clean - Modern and energetic (Beta)' }
+  // Emotion options
+  const emotionOptions = [
+    { value: 'auto', label: '🤖 Auto-Detect', description: 'Automatically detect emotion from text' },
+    { value: 'neutral', label: '😐 Neutral', description: 'Standard tone without emotion' },
+    { value: 'happy', label: '😊 Happy', description: 'Cheerful and upbeat' },
+    { value: 'sad', label: '😢 Sad', description: 'Somber and melancholic' },
+    { value: 'angry', label: '😠 Angry', description: 'Intense and forceful' },
+    { value: 'calm', label: '😌 Calm', description: 'Peaceful and soothing' },
+    { value: 'excited', label: '🤩 Excited', description: 'Energetic and enthusiastic' }
   ]
 
   // Playback speed options
@@ -118,7 +127,7 @@ export default function VoiceAgent() {
     return segments
   }
 
-  const synthesizeAudio = async (text: string, lang: string): Promise<{ blob: Blob, url: string, provider: string } | null> => {
+  const synthesizeAudio = async (text: string, lang: string): Promise<{ blob: Blob, url: string, provider: string, emotion?: string, emotionConfidence?: number } | null> => {
     const API_URL = process.env.NEXT_PUBLIC_API_URL
 
     if (!API_URL) {
@@ -135,7 +144,7 @@ export default function VoiceAgent() {
         body: JSON.stringify({ 
           text: text, 
           language: lang,
-          voice: selectedVoice
+          emotion: emotionMode
         })
       })
 
@@ -158,7 +167,15 @@ export default function VoiceAgent() {
         const url = URL.createObjectURL(blob)
         
         console.log(`TTS success using ${data.provider}: ${text.substring(0, 50)}...`)
-        return { blob, url, provider: data.provider }
+        console.log(`Emotion: ${data.emotion} (confidence: ${data.emotion_confidence})`)
+        
+        return { 
+          blob, 
+          url, 
+          provider: data.provider,
+          emotion: data.emotion,
+          emotionConfidence: data.emotion_confidence
+        }
       } else {
         throw new Error('No audio data received from server')
       }
@@ -166,6 +183,32 @@ export default function VoiceAgent() {
       console.error('TTS error', err)
       alert(`TTS failed: ${err.message}\n\nMake sure the backend is running at ${API_URL}`)
       return null
+    }
+  }
+
+  const analyzeEmotion = async (text: string, lang: string) => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL
+    if (!API_URL) return
+
+    try {
+      const resp = await fetch(`${API_URL}/api/emotion/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          text: text, 
+          language: lang
+        })
+      })
+
+      if (resp.ok) {
+        const data = await resp.json()
+        setDetectedEmotion(data)
+        console.log('Emotion analysis:', data)
+      }
+    } catch (err) {
+      console.error('Emotion analysis error:', err)
     }
   }
 
@@ -564,7 +607,7 @@ export default function VoiceAgent() {
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Language, Voice & Speed Selectors */}
+          {/* Language, Emotion & Speed Selectors */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Language Selector */}
             <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl p-6 shadow-md transition-colors duration-300`}>
@@ -580,28 +623,34 @@ export default function VoiceAgent() {
                 <option value="Urdu" className={darkMode ? 'bg-gray-700 text-gray-200' : 'text-gray-800'}>🇵🇰 Urdu (اردو)</option>
                 <option value="Sindhi" className={darkMode ? 'bg-gray-700 text-gray-200' : 'text-gray-800'}>🇵🇰 Sindhi (سنڌي)</option>
               </select>
+              <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                100% Self-hosted TTS
+              </p>
             </div>
 
-            {/* Voice Selector */}
+            {/* Emotion Selector */}
             <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl p-6 shadow-md transition-colors duration-300`}>
               <label className={`block text-lg font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'} mb-3`}>
-                🎤 Voice Style
+                🎭 Emotion
               </label>
               <select
-                value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
-                className={`w-full px-5 py-4 text-lg ${darkMode ? 'text-gray-200 bg-gray-700 border-gray-600' : 'text-gray-800 bg-white border-gray-300'} border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-300`}
+                value={emotionMode}
+                onChange={(e) => setEmotionMode(e.target.value)}
+                className={`w-full px-5 py-4 text-lg ${darkMode ? 'text-gray-200 bg-gray-700 border-gray-600' : 'text-gray-800 bg-white border-gray-300'} border-2 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors duration-300`}
               >
-                {availableVoices.map(voice => (
+                {emotionOptions.map(emotion => (
                   <option 
-                    key={voice.id} 
-                    value={voice.id}
+                    key={emotion.value} 
+                    value={emotion.value}
                     className={darkMode ? 'bg-gray-700 text-gray-200' : 'text-gray-800'}
                   >
-                    {voice.name}
+                    {emotion.label}
                   </option>
                 ))}
               </select>
+              <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {emotionOptions.find(e => e.value === emotionMode)?.description}
+              </p>
             </div>
 
             {/* Speed Control */}
