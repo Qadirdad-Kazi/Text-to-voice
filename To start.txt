@@ -6,11 +6,6 @@ npm install
 npm run dev
 
 server 
-cd server 
-# ensure dependencies installed (once)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# start in foreground (dev auto-reload)
-./.venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd "e:\DESKTOP\Github Clones\client-Text-to-voice\server"
+venv\Scripts\activate
+python main.py
