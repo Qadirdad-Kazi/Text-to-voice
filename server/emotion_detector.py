@@ -43,6 +43,11 @@ class EmotionDetector:
                 'ur': ['پرسکون', 'سکون', 'آرام', 'ٹھنڈا', 'خاموش', 'نرم'],
                 'sd': ['پرسکون', 'سکون', 'آرام سان', 'شانت', 'خاموش']
             },
+            'serious': {
+                'en': ['serious', 'solemn', 'formal', 'grave', 'earnest'],
+                'ur': ['سنجیدہ', 'سنگین', 'وقار', 'گمبھیر'],
+                'sd': ['سنجيده', 'سنگين', 'وقار', 'گمڀير']
+            },
             'excited': {
                 'en': ['excited', 'thrilled', 'enthusiastic', 'energetic', 
                        'pumped', 'eager', 'passionate', 'dynamic'],
@@ -260,6 +265,11 @@ class EmotionDetector:
                 'speaking_rate': 0.85,
                 'pitch_shift': 0.9,
                 'volume': 0.9
+            },
+            'serious': {
+                'speaking_rate': 0.95,
+                'pitch_shift': 0.95,
+                'volume': 0.95
             },
             'angry': {
                 'speaking_rate': 1.2,

@@ -6,19 +6,19 @@ Supports multi-language TTS with emotion detection (English, Urdu, Sindhi)
 
 import os
 import logging
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import asyncio
 from typing import Optional
+
+from tts_pipeline import TTSPipeline
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import custom modules
+# Import custom modules (offline-only)
 try:
     from universal_tts import create_universal_tts, UniversalTTSEngine
     UNIVERSAL_TTS_AVAILABLE = True
@@ -50,7 +50,7 @@ app.add_middleware(
 # Environment variables
 DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
 
-# Initialize Universal TTS engine
+# Initialize Universal TTS engine (primary - offline phoneme synthesis)
 universal_tts_engine = None
 if UNIVERSAL_TTS_AVAILABLE:
     try:
@@ -70,18 +70,21 @@ if EMOTION_DETECTION_AVAILABLE:
         logger.error(f"Failed to initialize emotion detector: {e}")
         emotion_detector = None
 
+# Initialize TTS pipeline
+tts_pipeline = None
+if universal_tts_engine:
+    tts_pipeline = TTSPipeline(
+        tts_engine=universal_tts_engine,
+        emotion_detector=emotion_detector
+    )
+
 # Pydantic models
 class TTSRequest(BaseModel):
     text: str
     language: str = "English"
-    emotion: Optional[str] = None  # auto, neutral, happy, sad, angry, calm, excited
+    emotion: Optional[str] = None  # auto, neutral, happy, sad, calm, serious
     speaking_rate: Optional[float] = 1.0
     pitch_shift: Optional[float] = 1.0
-
-class ChatRequest(BaseModel):
-    message: str
-    language: str = "English"
-    history: list = []
 
 # Language mapping
 LANGUAGE_CODES = {
@@ -111,7 +114,7 @@ async def health_check():
     return {
         "backend": "online",
         "tts_engine": {
-            "type": "self-hosted",
+            "type": "phoneme",
             "available": universal_tts_engine is not None,
             "languages": ["English", "Urdu", "Sindhi"],
             "status": "ready" if universal_tts_engine else "unavailable"
@@ -134,7 +137,7 @@ async def text_to_speech(request: TTSRequest):
     Supports English, Urdu, and Sindhi
     """
     try:
-        if not universal_tts_engine:
+        if not universal_tts_engine or not tts_pipeline:
             raise HTTPException(
                 status_code=503,
                 detail="TTS engine not available. Please check server logs."
@@ -144,60 +147,41 @@ async def text_to_speech(request: TTSRequest):
         
         logger.info(f"TTS request: {request.text[:50]}... in {request.language}")
         
-        # Detect emotion if not provided
-        detected_emotion = request.emotion
-        prosody_adjustments = {}
-        
-        if emotion_detector and (not detected_emotion or detected_emotion == "auto"):
-            try:
-                prosody_adjustments = emotion_detector.get_prosody_adjustments(
-                    request.text, 
-                    language_code
-                )
-                detected_emotion = prosody_adjustments.get('emotion', 'neutral')
-                logger.info(f"Detected emotion: {detected_emotion} (confidence: {prosody_adjustments.get('confidence', 0):.2f})")
-            except Exception as e:
-                logger.warning(f"Emotion detection failed: {e}")
-                detected_emotion = 'neutral'
-                prosody_adjustments = {}
-        
-        if not detected_emotion:
-            detected_emotion = 'neutral'
-        
-        # Apply prosody adjustments if available
+        detected_emotion = request.emotion or "auto"
         speaking_rate = request.speaking_rate or 1.0
         pitch_shift = request.pitch_shift or 1.0
         
-        if prosody_adjustments:
-            speaking_rate = prosody_adjustments.get('speaking_rate', speaking_rate)
-            pitch_shift = prosody_adjustments.get('pitch_shift', pitch_shift)
-        
-        # Synthesize with Universal TTS Engine
-        logger.info(f"Using Self-Hosted TTS for {request.language} with emotion: {detected_emotion}")
-        audio_content = universal_tts_engine.synthesize(
+        logger.info(f"Using offline phoneme TTS for {request.language} with emotion: {detected_emotion}")
+        audio_content, meta = tts_pipeline.synthesize(
             text=request.text,
             language=request.language,
             emotion=detected_emotion,
             speaking_rate=speaking_rate,
             pitch_shift=pitch_shift
         )
+        provider = "phoneme_tts"
+        audio_format = "wav"
         
         import base64
         audio_base64 = base64.b64encode(audio_content).decode('utf-8')
         
-        logger.info(f"Self-Hosted TTS success: {len(audio_content)} bytes")
+        logger.info(f"TTS success: {len(audio_content)} bytes using {provider} ({audio_format})")
         return {
             "status": "success",
             "language": request.language,
-            "audio_format": "mp3",
+            "audio_format": audio_format,
             "audio": audio_base64,
-            "provider": "self_hosted",
-            "engine": "universal_tts",
-            "emotion": detected_emotion,
-            "emotion_confidence": prosody_adjustments.get('confidence', 0.0),
+            "provider": provider,
+            "engine": provider,
+            "emotion": meta.get("emotion", detected_emotion),
+            "emotion_confidence": meta.get("confidence", 0.0),
             "prosody": {
                 "speaking_rate": speaking_rate,
                 "pitch_shift": pitch_shift
+            },
+            "pipeline": {
+                "normalized_text": meta.get("normalized_text"),
+                "token_count": len(meta.get("tokens", []))
             },
             "message": f"Audio generated successfully with Self-Hosted {request.language} TTS"
         }

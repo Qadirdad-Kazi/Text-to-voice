@@ -1,16 +1,15 @@
-# 🎙️ LiveKit Voice Agent - Multi-Language AI Assistant
+# 🎙️ Offline Sindhi Phoneme TTS - Multi-Language Voice Agent
 
-A real-time AI voice agent built with LiveKit, OpenAI, and Next.js. Supports English, Urdu, and Sindhi for both Text-to-Speech (TTS) and Speech-to-Text (STT).
+A fully offline, self-hosted phoneme-based TTS system with emotion control for English, Urdu (اردو), and Sindhi (سنڌي). No external APIs or cloud services are used.
 
 ## 🌟 Features
 
-- **Real-time Voice Interaction**: Powered by LiveKit's real-time infrastructure
+- **Fully Offline**: No cloud or API dependencies
 - **Multi-Language Support**: English, Urdu (اردو), and Sindhi (سنڌي)
-- **Text & Voice Input**: Interact via typing or speaking
-- **AI-Powered Responses**: Uses OpenAI GPT-4o-mini for intelligent conversations
-- **High-Quality TTS**: OpenAI's text-to-speech with different voices per language
-- **Uplift AI Integration**: Optional WebSocket TTS with ~300ms latency ([docs](https://docs.upliftai.org/tutorials/websocket-conversational-ai))
-- **Accurate STT**: OpenAI Whisper for speech recognition
+- **Phoneme TTS Engine**: Offline, emotion-aware synthesis
+- **Rule-Based Emotion Detection**: No ML required
+- **Prosody Control**: Pitch, speed, pauses, and emotion mapping
+- **Dataset Tooling Ready**: Audio slicing, silence trimming, metadata generation
 - **Modern UI**: Beautiful, responsive interface built with Next.js and Tailwind CSS
 
 ## 📋 Prerequisites
@@ -19,11 +18,7 @@ Before you begin, ensure you have:
 
 - **Node.js** (v18 or higher)
 - **Python** (v3.9 or higher)
-- **OpenAI API Key** - [Get one here](https://platform.openai.com/api-keys)
-- **LiveKit Account** - [Sign up here](https://livekit.io/)
-  - Get your LiveKit API Key and Secret from the dashboard
-  - Note your LiveKit WebSocket URL
-- **Uplift AI API Key** (Optional) - [Sign up here](https://upliftai.org) for faster TTS
+- No external API keys required
 
 ## 🚀 Quick Start
 
@@ -56,16 +51,15 @@ copy .env.example .env  # Windows
 cp .env.example .env    # macOS/Linux
 ```
 
-**Edit `server/.env` with your credentials:**
+**Edit `server/.env` for offline settings:**
 
 ```env
-LIVEKIT_API_KEY=your_livekit_api_key
-LIVEKIT_API_SECRET=your_livekit_api_secret
-LIVEKIT_URL=wss://your-project.livekit.cloud
-OPENAI_API_KEY=sk-your-openai-key
-UPLIFT_API_KEY=your_uplift_key  # Optional
-USE_UPLIFT_TTS=false  # Set to true to enable Uplift AI
 DEFAULT_LANGUAGE=en
+LOG_LEVEL=INFO
+HOST=0.0.0.0
+PORT=8000
+DATASET_SAMPLE_RATE=16000
+DATASET_CHANNELS=1
 ```
 
 **Start the backend:**
@@ -92,7 +86,7 @@ npm install
 
 # Create .env.local file
 echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
-echo "NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud" >> .env.local
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 
 # Start the development server
 npm run dev
@@ -103,10 +97,8 @@ The web app will be available at `http://localhost:3000`
 ### 4. Start Using the Voice Agent
 
 1. Open your browser to `http://localhost:3000`
-2. Enter your name
-3. Select your preferred language (English, Urdu, or Sindhi)
-4. Click "Connect to Voice Agent"
-5. Start speaking or typing!
+2. Select your preferred language (English, Urdu, or Sindhi)
+3. Type text and synthesize speech
 
 ## 🗂️ Project Structure
 
@@ -114,7 +106,12 @@ The web app will be available at `http://localhost:3000`
 TextToVoice/
 ├── server/                 # Python FastAPI backend
 │   ├── main.py            # FastAPI server with REST endpoints
-│   ├── agent.py           # LiveKit voice agent implementation
+│   ├── tts_pipeline.py    # Offline TTS pipeline
+│   ├── universal_tts.py   # Phoneme synthesis engine
+│   ├── text_normalizer.py # Language normalization
+│   ├── g2p.py             # Grapheme-to-phoneme mapping
+│   ├── prosody.py         # Prosody mapping
+│   ├── dataset_tools.py   # Dataset preparation tools
 │   ├── requirements.txt   # Python dependencies
 │   └── .env.example       # Environment variables template
 │
@@ -137,11 +134,8 @@ TextToVoice/
 ### Backend (`http://localhost:8000`)
 
 - `GET /` - Health check
-- `POST /api/token` - Generate LiveKit access token
-- `POST /api/tts` - Text-to-speech conversion
-- `POST /api/stt` - Speech-to-text transcription
-- `POST /api/chat` - Chat with AI (text + audio response)
-- `WS /ws/realtime` - WebSocket for real-time interaction
+- `POST /api/tts` - Text-to-speech conversion (offline phoneme TTS)
+- `POST /api/emotion/analyze` - Rule-based emotion analysis
 
 ### Example API Usage
 
@@ -170,36 +164,19 @@ curl -X POST http://localhost:8000/api/chat \
 
 The system supports three languages with the following mappings:
 
-| Language | Code | OpenAI Voice | Whisper Code |
-|----------|------|--------------|--------------|
-| English  | en   | alloy        | en           |
-| Urdu     | ur   | nova         | ur           |
-| Sindhi   | sd   | shimmer      | sd           |
+| Language | Code |
+|----------|------|
+| English  | en   |
+| Urdu     | ur   |
+| Sindhi   | sd   |
 
-You can customize voices in `server/main.py`:
-
-```python
-VOICE_MAPPING = {
-    "English": "alloy",   # Options: alloy, echo, fable, onyx, nova, shimmer
-    "Urdu": "nova",
-    "Sindhi": "shimmer"
-}
-```
+Phoneme mappings are defined in `server/universal_tts.py`.
 
 ## 🎨 Customization
 
 ### Change System Prompts
 
-Edit language-specific prompts in `server/agent.py`:
-
-```python
-LANGUAGE_CONFIG = {
-    "English": {
-        "system_prompt": "Your custom English prompt here"
-    },
-    # ... other languages
-}
-```
+Edit phoneme mappings and prosody in `server/universal_tts.py` and `server/emotion_detector.py`.
 
 ### Modify UI Theme
 

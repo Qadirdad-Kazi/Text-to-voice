@@ -8,9 +8,18 @@ import logging
 import numpy as np
 from typing import Optional, Dict
 import io
+import os
+import shutil
 from pydub import AudioSegment
 from pydub.generators import Sine, Square, Triangle
 import re
+
+# Configure FFmpeg path
+ffmpeg_path = shutil.which("ffmpeg")
+if ffmpeg_path:
+    AudioSegment.converter = ffmpeg_path
+    AudioSegment.ffmpeg = ffmpeg_path
+    AudioSegment.ffprobe = shutil.which("ffprobe") or ffmpeg_path.replace("ffmpeg", "ffprobe")
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +41,20 @@ class UniversalTTSEngine:
         
         # Sindhi phoneme mappings
         self.sindhi_phonemes = self._create_sindhi_phonemes()
+
+        # Pause durations in milliseconds
+        self.pause_durations_ms = {
+            ',': 200,
+            '.': 320,
+            '?': 300,
+            '!': 260,
+            ';': 220,
+            ':': 220,
+            '\n': 500,
+            '،': 200,
+            '؟': 300,
+            '۔': 320
+        }
         
         logger.info("Universal TTS Engine initialized for English, Urdu, and Sindhi")
         self.initialized = True
@@ -193,6 +216,20 @@ class UniversalTTSEngine:
             '.': {'freq': 0, 'duration': 300},
             '،': {'freq': 0, 'duration': 200},
         }
+
+    def get_phoneme_map(self, language: str) -> Dict:
+        """Return the phoneme map for a given language."""
+        if language.lower() == "english":
+            return self.english_phonemes
+        if language.lower() == "urdu":
+            return self.urdu_phonemes
+        if language.lower() == "sindhi":
+            return self.sindhi_phonemes
+        return self.english_phonemes
+
+    def get_pause_durations(self) -> Dict:
+        """Return pause duration map in milliseconds."""
+        return self.pause_durations_ms.copy()
     
     def synthesize(
         self, 
@@ -220,66 +257,111 @@ class UniversalTTSEngine:
         
         logger.info(f"Synthesizing {language} text with emotion: {emotion}")
         
-        # Select appropriate phoneme map
-        if language.lower() == "english":
-            phoneme_map = self.english_phonemes
-            text = text.lower()
-        elif language.lower() == "urdu":
-            phoneme_map = self.urdu_phonemes
-        elif language.lower() == "sindhi":
-            phoneme_map = self.sindhi_phonemes
-        else:
-            phoneme_map = self.english_phonemes
-            text = text.lower()
-        
-        # Apply emotion-based prosody
+        tokens = list(text.lower() if language.lower() == "english" else text)
+        return self.synthesize_from_tokens(
+            tokens=tokens,
+            language=language,
+            emotion=emotion,
+            speaking_rate=speaking_rate,
+            pitch_shift=pitch_shift
+        )
+
+    def build_units_from_tokens(
+        self,
+        tokens: list,
+        language: str = "English",
+        emotion: str = "neutral",
+        speaking_rate: float = 1.0,
+        pitch_shift: float = 1.0
+    ) -> list:
+        """Build synthesis units without rendering audio (for tests/debug)."""
+        phoneme_map = self.get_phoneme_map(language)
+
         prosody = self._get_emotion_prosody(emotion)
         effective_rate = speaking_rate * prosody['rate_modifier']
         effective_pitch = pitch_shift * prosody['pitch_modifier']
-        
-        # Generate audio segments
-        audio_segments = []
-        
-        for char in text:
-            if char in phoneme_map:
-                phoneme = phoneme_map[char]
+
+        units = []
+        for token in tokens:
+            if token in phoneme_map:
+                phoneme = phoneme_map[token]
                 freq = phoneme['freq'] * effective_pitch
                 duration = phoneme['duration'] / effective_rate
                 duration = duration * prosody['duration_variance']
-                
-                if freq > 0:
-                    segment = self._generate_tone(
-                        freq, 
-                        duration,
-                        prosody['amplitude'],
-                        emotion
-                    )
-                else:
-                    segment = AudioSegment.silent(duration=int(duration))
-                
-                audio_segments.append(segment)
+                units.append({
+                    "token": token,
+                    "freq": freq,
+                    "duration_ms": float(duration),
+                    "is_pause": freq == 0
+                })
+            elif token in self.pause_durations_ms or token == "\n":
+                pause = self.pause_durations_ms.get(token, 200)
+                pause = pause / effective_rate
+                units.append({
+                    "token": token,
+                    "freq": 0,
+                    "duration_ms": float(pause),
+                    "is_pause": True
+                })
             else:
-                # Unknown character - brief pause
-                audio_segments.append(AudioSegment.silent(duration=50))
-        
-        # Concatenate segments
+                units.append({
+                    "token": token,
+                    "freq": 0,
+                    "duration_ms": 50.0,
+                    "is_pause": True
+                })
+
+        return units
+
+    def synthesize_from_tokens(
+        self,
+        tokens: list,
+        language: str = "English",
+        emotion: str = "neutral",
+        speaking_rate: float = 1.0,
+        pitch_shift: float = 1.0
+    ) -> bytes:
+        """Synthesize audio from phoneme tokens."""
+        units = self.build_units_from_tokens(
+            tokens=tokens,
+            language=language,
+            emotion=emotion,
+            speaking_rate=speaking_rate,
+            pitch_shift=pitch_shift
+        )
+
+        combined = self._render_units(units, emotion)
+
+        output_buffer = io.BytesIO()
+        combined.export(output_buffer, format="wav")
+        audio_bytes = output_buffer.getvalue()
+
+        logger.info(f"Synthesized {len(audio_bytes)} bytes of {language} audio")
+        return audio_bytes
+
+    def _render_units(self, units: list, emotion: str) -> AudioSegment:
+        """Render units to an AudioSegment."""
+        audio_segments = []
+        for unit in units:
+            if unit["freq"] > 0:
+                segment = self._generate_tone(
+                    unit["freq"],
+                    unit["duration_ms"],
+                    1.0,
+                    emotion
+                )
+            else:
+                segment = AudioSegment.silent(duration=int(unit["duration_ms"]))
+            audio_segments.append(segment)
+
         if audio_segments:
             combined = audio_segments[0]
             for segment in audio_segments[1:]:
                 combined += segment
         else:
             combined = AudioSegment.silent(duration=100)
-        
-        # Apply emotion filters
-        combined = self._apply_emotion_filters(combined, emotion)
-        
-        # Export to MP3
-        output_buffer = io.BytesIO()
-        combined.export(output_buffer, format="mp3", bitrate="128k")
-        audio_bytes = output_buffer.getvalue()
-        
-        logger.info(f"Synthesized {len(audio_bytes)} bytes of {language} audio")
-        return audio_bytes
+
+        return self._apply_emotion_filters(combined, emotion)
     
     def _generate_tone(
         self, 
@@ -293,16 +375,16 @@ class UniversalTTSEngine:
         # Use different waveforms for different emotions
         if emotion in ['angry', 'excited']:
             # Square wave for harsher sound
-            wave = Square(frequency).to_audio_segment(duration=int(duration))
+            wave = Square(frequency, sample_rate=self.sample_rate).to_audio_segment(duration=int(duration), volume=-20)
         elif emotion == 'calm':
             # Pure sine for smoothness
-            wave = Sine(frequency).to_audio_segment(duration=int(duration))
+            wave = Sine(frequency, sample_rate=self.sample_rate).to_audio_segment(duration=int(duration), volume=-20)
         else:
             # Default sine wave
-            wave = Sine(frequency).to_audio_segment(duration=int(duration))
+            wave = Sine(frequency, sample_rate=self.sample_rate).to_audio_segment(duration=int(duration), volume=-20)
         
-        # Apply amplitude
-        wave = wave - (60 * (1 - amplitude))
+        # Apply amplitude (boost volume significantly)
+        wave = wave + 12  # Increase volume by 12dB
         
         # Add envelope
         fade_duration = min(10, int(duration * 0.1))
@@ -318,37 +400,43 @@ class UniversalTTSEngine:
                 'rate_modifier': 1.0,
                 'pitch_modifier': 1.0,
                 'duration_variance': 1.0,
-                'amplitude': 0.7
+                'amplitude': 1.0
             },
             'happy': {
                 'rate_modifier': 1.15,
                 'pitch_modifier': 1.2,
                 'duration_variance': 0.95,
-                'amplitude': 0.85
+                'amplitude': 1.0
             },
             'sad': {
                 'rate_modifier': 0.85,
                 'pitch_modifier': 0.9,
                 'duration_variance': 1.1,
-                'amplitude': 0.6
+                'amplitude': 0.8
             },
             'angry': {
                 'rate_modifier': 1.2,
                 'pitch_modifier': 1.15,
                 'duration_variance': 0.9,
-                'amplitude': 0.9
+                'amplitude': 1.0
             },
             'calm': {
                 'rate_modifier': 0.9,
                 'pitch_modifier': 0.95,
                 'duration_variance': 1.05,
-                'amplitude': 0.65
+                'amplitude': 0.85
+            },
+            'serious': {
+                'rate_modifier': 0.95,
+                'pitch_modifier': 0.95,
+                'duration_variance': 1.0,
+                'amplitude': 0.9
             },
             'excited': {
                 'rate_modifier': 1.25,
                 'pitch_modifier': 1.3,
                 'duration_variance': 0.9,
-                'amplitude': 0.9
+                'amplitude': 1.0
             }
         }
         

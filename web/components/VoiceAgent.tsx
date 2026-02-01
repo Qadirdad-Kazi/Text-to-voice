@@ -26,9 +26,11 @@ export default function VoiceAgent() {
   const [multiLanguageMode, setMultiLanguageMode] = useState(false)
   
   // Emotion control states
-  const [emotionMode, setEmotionMode] = useState<string>('auto') // auto, neutral, happy, sad, angry, calm, excited
+  const [emotionMode, setEmotionMode] = useState<string>('auto') // auto, neutral, happy, sad, calm, serious
   const [showEmotionAnalysis, setShowEmotionAnalysis] = useState(false)
   const [detectedEmotion, setDetectedEmotion] = useState<any>(null)
+  const [pitchShift, setPitchShift] = useState<number>(0) // -12 to +12 semitones
+  const [speakingRate, setSpeakingRate] = useState<number>(1.0) // 0.5 to 2.0
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: number]: HTMLAudioElement }>({})
@@ -61,9 +63,8 @@ export default function VoiceAgent() {
     { value: 'neutral', label: '😐 Neutral', description: 'Standard tone without emotion' },
     { value: 'happy', label: '😊 Happy', description: 'Cheerful and upbeat' },
     { value: 'sad', label: '😢 Sad', description: 'Somber and melancholic' },
-    { value: 'angry', label: '😠 Angry', description: 'Intense and forceful' },
     { value: 'calm', label: '😌 Calm', description: 'Peaceful and soothing' },
-    { value: 'excited', label: '🤩 Excited', description: 'Energetic and enthusiastic' }
+    { value: 'serious', label: '🧐 Serious', description: 'Formal and steady tone' }
   ]
 
   // Playback speed options
@@ -144,7 +145,9 @@ export default function VoiceAgent() {
         body: JSON.stringify({ 
           text: text, 
           language: lang,
-          emotion: emotionMode
+          emotion: emotionMode === 'auto' ? undefined : emotionMode,
+          pitch_shift: pitchShift,
+          speaking_rate: speakingRate
         })
       })
 
@@ -163,7 +166,7 @@ export default function VoiceAgent() {
           uint8Array[i] = audioBytes.charCodeAt(i)
         }
         
-        const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
+        const blob = new Blob([arrayBuffer], { type: data.audio_format === 'wav' ? 'audio/wav' : 'audio/mpeg' })
         const url = URL.createObjectURL(blob)
         
         console.log(`TTS success using ${data.provider}: ${text.substring(0, 50)}...`)
@@ -358,7 +361,7 @@ export default function VoiceAgent() {
         clearTimeout(debounceTimerRef.current)
       }
     }
-  }, [textInput, language, realtimePreview, selectedVoice, playbackSpeed, isLoading])
+  }, [textInput, language, realtimePreview, emotionMode, playbackSpeed, pitchShift, speakingRate, isLoading])
 
   const downloadAudio = (message: Message, index: number) => {
     if (message.audioBlob) {
@@ -607,6 +610,80 @@ export default function VoiceAgent() {
         </div>
 
         <div className="p-8 space-y-6">
+          {/* Real-time Emotion Analysis Toggle */}
+          <div className={`${darkMode ? 'bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700' : 'bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200'} rounded-xl p-4 shadow-md transition-all duration-300`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-3xl">🧠</div>
+                <div>
+                  <h3 className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Live Emotion Analysis</h3>
+                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Analyze text emotion as you type</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEmotionAnalysis(!showEmotionAnalysis)
+                  if (!showEmotionAnalysis && textInput.trim()) {
+                    analyzeEmotion(textInput, language)
+                  }
+                }}
+                className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 ${
+                  showEmotionAnalysis 
+                    ? 'bg-purple-600 text-white shadow-lg' 
+                    : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {showEmotionAnalysis ? '✓ Enabled' : 'Enable'}
+              </button>
+            </div>
+            
+            {showEmotionAnalysis && detectedEmotion && (
+              <div className={`mt-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800/50' : 'bg-white/70'} backdrop-blur-sm`}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Detected:</span>
+                  <span className="text-2xl">{emotionOptions.find(e => e.value === detectedEmotion.emotion)?.label.split(' ')[0] || '😐'}</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Emotion:</span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      detectedEmotion.emotion === 'happy' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                      detectedEmotion.emotion === 'sad' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                      detectedEmotion.emotion === 'angry' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                      detectedEmotion.emotion === 'calm' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                      detectedEmotion.emotion === 'excited' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
+                      'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                    }`}>
+                      {detectedEmotion.emotion}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Confidence:</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500"
+                          style={{ width: `${(detectedEmotion.confidence || 0) * 100}%` }}
+                        />
+                      </div>
+                      <span className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {((detectedEmotion.confidence || 0) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                  {detectedEmotion.intensity && (
+                    <div className="flex justify-between items-center">
+                      <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Intensity:</span>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {detectedEmotion.intensity}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Language, Emotion & Speed Selectors */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Language Selector */}
@@ -677,6 +754,77 @@ export default function VoiceAgent() {
                 {playbackSpeed < 1 ? 'Great for learning' : playbackSpeed > 1 ? 'Save time' : 'Standard speed'}
               </p>
             </div>
+          </div>
+
+          {/* Advanced Voice Controls */}
+          <div className={`${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl p-6 shadow-md transition-colors duration-300`}>
+            <h3 className={`text-lg font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'} mb-4 flex items-center gap-2`}>
+              <span>🎚️</span> Advanced Voice Controls
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Pitch Shift Control */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    🎵 Pitch Shift
+                  </label>
+                  <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                    pitchShift === 0 ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' :
+                    pitchShift > 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                    'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                  }`}>
+                    {pitchShift > 0 ? '+' : ''}{pitchShift} semitones
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="-12"
+                  max="12"
+                  step="1"
+                  value={pitchShift}
+                  onChange={(e) => setPitchShift(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                />
+                <div className="flex justify-between mt-1">
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Lower</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Normal</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Higher</span>
+                </div>
+              </div>
+
+              {/* Speaking Rate Control */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    ⚡ Speaking Rate
+                  </label>
+                  <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                    speakingRate === 1.0 ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' :
+                    speakingRate > 1.0 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' :
+                    'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                  }`}>
+                    {speakingRate.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={speakingRate}
+                  onChange={(e) => setSpeakingRate(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                />
+                <div className="flex justify-between mt-1">
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Slower</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Normal</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Faster</span>
+                </div>
+              </div>
+            </div>
+            <p className={`mt-4 text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              💡 Adjust pitch and speed independently for fine-tuned voice control
+            </p>
           </div>
 
           {/* Text Input Form with Clear History Button */}
@@ -856,11 +1004,28 @@ export default function VoiceAgent() {
                           )}
 
                           <div className={`flex flex-wrap items-center gap-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            <span className={`px-2 py-1 ${darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'} rounded-full`}>
+                            <span className={`px-2 py-1 ${darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'} rounded-full font-medium`}>
                               {language}
                             </span>
-                            <span className={`px-2 py-1 ${darkMode ? 'bg-purple-900 text-purple-300' : 'bg-purple-100 text-purple-700'} rounded-full`}>
-                              {availableVoices.find(v => v.id === selectedVoice)?.name.split(' ')[1] || msg.provider || 'uplift'}
+                            {msg.emotion && (
+                              <span className={`px-2 py-1 rounded-full font-medium ${
+                                msg.emotion === 'happy' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                msg.emotion === 'sad' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                msg.emotion === 'angry' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                msg.emotion === 'calm' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                msg.emotion === 'excited' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
+                                'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                              }`}>
+                                {emotionOptions.find(e => e.value === msg.emotion)?.label.split(' ')[0]} {msg.emotion}
+                              </span>
+                            )}
+                            {msg.emotionConfidence && (
+                              <span className={`px-2 py-1 ${darkMode ? 'bg-purple-900 text-purple-300' : 'bg-purple-100 text-purple-700'} rounded-full font-medium`}>
+                                {(msg.emotionConfidence * 100).toFixed(0)}% confident
+                              </span>
+                            )}
+                            <span className={`px-2 py-1 ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'} rounded-full`}>
+                              🏠 Self-hosted
                             </span>
                             <span>{msg.timestamp.toLocaleTimeString()}</span>
                           </div>
@@ -911,14 +1076,16 @@ export default function VoiceAgent() {
           )}
 
           {messages.length === 0 && !isLoading && (
-            <div className={`text-center py-12 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl shadow-md transition-colors duration-300`}>
-              <div className="text-6xl mb-4">🎤</div>
-              <p className={`text-xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} font-medium mb-2`}>Ready to Generate Speech!</p>
-              <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Enter your text above and click "Generate Speech"</p>
-              <div className={`mt-6 flex justify-center gap-4 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                <span>✨ Powered by Uplift AI</span>
+            <div className={`text-center py-12 ${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700' : 'bg-gradient-to-br from-white to-blue-50'} rounded-xl shadow-md transition-colors duration-300`}>
+              <div className="text-6xl mb-4 animate-pulse">🎤</div>
+              <p className={`text-xl ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-bold mb-2`}>Ready to Generate Speech!</p>
+              <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-4`}>Enter your text above and click "Generate Speech"</p>
+              <div className={`mt-6 flex justify-center gap-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <span className="flex items-center gap-1">🏠 100% Self-hosted</span>
                 <span>•</span>
-                <span>~300ms latency</span>
+                <span className="flex items-center gap-1">🌍 English, Urdu, Sindhi</span>
+                <span>•</span>
+                <span className="flex items-center gap-1">🎭 7 Emotions</span>
               </div>
             </div>
           )}

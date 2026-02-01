@@ -11,15 +11,10 @@ export default function Home() {
 
         <footer className="mt-12 text-center text-gray-600 dark:text-gray-400 transition-colors duration-300">
           <p className="text-sm flex items-center justify-center gap-2 flex-wrap">
-            <span>Built with</span>
-            <span className="font-semibold text-blue-600 dark:text-blue-400">Uplift AI</span>
-            <span>•</span>
-            <span className="font-semibold text-purple-600 dark:text-purple-400">OpenAI</span>
-            <span>•</span>
-            <span className="font-semibold text-gray-800 dark:text-gray-200">Next.js</span>
+            <span className="font-semibold text-gray-800 dark:text-gray-200">🏠 100% Self-Hosted Voice Agent</span>
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-            Supports English, Urdu (اردو), and Sindhi (سنڌي)
+            Supports English, Urdu (اردو), and Sindhi (سنڌي) • No External APIs Required
           </p>
         </footer>
       </div>
