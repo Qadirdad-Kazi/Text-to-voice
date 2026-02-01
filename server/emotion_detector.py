@@ -81,6 +81,15 @@ class EmotionDetector:
         }
         
         logger.info("Emotion Detector initialized")
+
+        # Allowed output emotions for phoneme synthesis
+        self.allowed_emotions = {"neutral", "happy", "sad", "calm", "serious"}
+        self.emotion_map = {
+            "angry": "serious",
+            "excited": "happy",
+            "fearful": "sad",
+            "curious": "neutral"
+        }
     
     def detect_emotion(
         self, 
@@ -151,14 +160,15 @@ class EmotionDetector:
             scores = {'neutral': 1.0}
         
         if return_scores:
-            return scores
+            return self._normalize_allowed_scores(scores)
         
         # Return primary emotion and confidence
         if 'neutral' in scores and scores['neutral'] == 1.0:
             return ('neutral', 1.0)
         
         primary_emotion = max(scores.items(), key=lambda x: x[1])
-        return primary_emotion
+        emotion, confidence = primary_emotion
+        return self._map_emotion(emotion), confidence
     
     def _analyze_sindhi_structure(self, text: str) -> Dict[str, float]:
         """
@@ -248,6 +258,8 @@ class EmotionDetector:
         """
         emotion, confidence = self.detect_emotion(text, language)
         intensity = self.analyze_emotional_intensity(text, language)
+
+        emotion = self._map_emotion(emotion)
         
         # Base adjustments by emotion
         adjustments = {
@@ -308,6 +320,25 @@ class EmotionDetector:
         }
         
         return result
+
+    def _map_emotion(self, emotion: str) -> str:
+        if emotion in self.allowed_emotions:
+            return emotion
+        return self.emotion_map.get(emotion, "neutral")
+
+    def _normalize_allowed_scores(self, scores: Dict[str, float]) -> Dict[str, float]:
+        normalized = {key: 0.0 for key in self.allowed_emotions}
+        for emotion, score in scores.items():
+            mapped = self._map_emotion(emotion)
+            normalized[mapped] = normalized.get(mapped, 0.0) + score
+
+        total = sum(normalized.values())
+        if total > 0:
+            normalized = {k: v / total for k, v in normalized.items()}
+        else:
+            normalized = {"neutral": 1.0, "happy": 0.0, "sad": 0.0, "calm": 0.0, "serious": 0.0}
+
+        return normalized
 
 
 class MultiModalEmotionDetector(EmotionDetector):

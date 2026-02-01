@@ -69,7 +69,9 @@ class TTSPipeline:
             "tokens": tokens,
             "emotion": detected_emotion,
             "speaking_rate": speaking_rate,
-            "pitch_shift": pitch_shift
+            "pitch_shift": pitch_shift,
+            "confidence": prosody_adjustments.get("confidence", 0.0),
+            "intensity": prosody_adjustments.get("intensity", 0.0)
         }
 
         return audio_bytes, meta
