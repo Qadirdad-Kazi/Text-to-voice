@@ -139,25 +139,67 @@ TextToVoice/
 
 ### Example API Usage
 
-**Generate Token:**
+**Text-to-Speech:**
 ```bash
-curl -X POST http://localhost:8000/api/token \
+curl -X POST http://localhost:8000/api/tts \
   -H "Content-Type: application/json" \
   -d '{
-    "room_name": "test-room",
-    "participant_name": "User1",
-    "language": "English"
+    "text": "سنڌي ٻولي خوبصورت آهي.",
+    "language": "Sindhi",
+    "emotion": "neutral"
   }'
 ```
 
-**Chat Request:**
+**Emotion Analysis:**
 ```bash
-curl -X POST http://localhost:8000/api/chat \
+curl -X POST http://localhost:8000/api/emotion/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "Hello, how are you?",
-    "language": "English"
+    "text": "مان خوش آهيان.",
+    "language": "Sindhi"
   }'
+```
+
+## 🧠 Offline TTS Pipeline
+
+Pipeline stages (modular, testable, no network calls):
+
+Text Input → Language Normalization → G2P → Emotion Detection → Prosody Mapping → Phoneme Audio Synthesis → WAV Output
+
+Core modules:
+- `server/text_normalizer.py`
+- `server/g2p.py`
+- `server/emotion_detector.py`
+- `server/prosody.py`
+- `server/universal_tts.py`
+- `server/tts_pipeline.py`
+
+## 🧰 Dataset Preparation Tools
+
+Use offline tools to prepare future training datasets (no training performed yet):
+
+```bash
+cd server
+python dataset_tools.py --input ./raw_wavs --output ./dataset/audio --trim --slice-ms 8000
+```
+
+If you provide matching transcripts in a `--text` folder, metadata will be created:
+
+```
+dataset/audio/
+  0001.wav
+  0002.wav
+  metadata.csv
+  metadata.json
+```
+
+## 🧪 Tests
+
+Run offline test suite:
+
+```bash
+cd server
+pytest
 ```
 
 ## 🌍 Language Configuration
@@ -232,68 +274,24 @@ netlify deploy
 ### Backend won't start
 - Check if Python 3.9+ is installed: `python --version`
 - Ensure all dependencies are installed: `pip install -r requirements.txt`
-- Verify `.env` file has correct API keys
+- Verify `server/.env` exists and has offline defaults
 
 ### Frontend connection fails
 - Ensure backend is running on `http://localhost:8000`
 - Check CORS settings in `main.py`
-- Verify `NEXT_PUBLIC_API_URL` in `.env.local`
+- Verify `NEXT_PUBLIC_API_URL` in `web/.env.local`
 
 ### No audio playback
-- Check browser permissions for microphone
-- Verify LiveKit URL is correct
+- Check browser autoplay restrictions
+- Verify audio format is WAV
 - Check browser console for errors
 
 ### Language not working correctly
-- Ensure OpenAI API key has access to Whisper and TTS
-- Check language code mappings in `main.py`
-- Verify audio format is supported
+- Check language mappings in `server/universal_tts.py`
+- Review `server/text_normalizer.py` for normalization rules
 
 ## 📚 Learn More
 
-- [LiveKit Documentation](https://docs.livekit.io/)
-- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
-- [Uplift AI WebSocket TTS](https://docs.upliftai.org/tutorials/websocket-conversational-ai) - For ~300ms latency
-- [Uplift AI LiveKit Guide](https://docs.upliftai.org/tutorials/livekit-voice-agent)
 - [Next.js Documentation](https://nextjs.org/docs)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
-
-### 🚀 Uplift AI Integration
-
-For even lower latency (~300ms first chunk), enable Uplift AI WebSocket TTS:
-# Web-only Text-to-Speech (Uplift) Demo
-
-This repository has been trimmed to include only the Next.js web client. The previous backend and LiveKit integration were removed per request. The web app now demonstrates a client-side TTS flow using the Uplift TTS API.
-
-Important notes:
-- This is a client-only demo intended for local testing. Putting an API key into `NEXT_PUBLIC_*` exposes it to end users and is not secure for production.
-
-Quick start (web only):
-
-1. Install dependencies
-
-```powershell
-cd web
-npm install
-```
-
-2. Add your Uplift API key to `.env.local` (browser-visible):
-
-```powershell
-# In the repository root
-setx NEXT_PUBLIC_UPLIFT_API_KEY "your_uplift_api_key"
-# Or create web/.env.local with:
-# NEXT_PUBLIC_UPLIFT_API_KEY=your_uplift_api_key
-```
-
-3. Run the dev server
-
-```powershell
-cd web
-npm run dev
-```
-
-4. Open http://localhost:3000 and use the UI to type text and synthesize audio via Uplift.
-
-If you need a secure server-side integration to keep your Uplift API key secret, I can add a small proxy server — let me know.
 

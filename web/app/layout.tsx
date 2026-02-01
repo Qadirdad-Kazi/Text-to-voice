@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Multilingual Text-to-Speech | Uplift AI',
-  description: 'Convert text to natural speech in English, Urdu, and Sindhi with AI-powered voices',
+  title: 'Offline Phoneme TTS | Sindhi Voice Agent',
+  description: 'Offline phoneme-based TTS with emotion control for English, Urdu, and Sindhi',
   icons: {
     icon: '/favicon.svg',
   },

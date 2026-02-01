@@ -1,5 +1,5 @@
 {
-  "name": "livekit-voice-agent-web",
+  "name": "offline-voice-agent-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {

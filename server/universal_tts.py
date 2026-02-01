@@ -283,7 +283,17 @@ class UniversalTTSEngine:
 
         units = []
         for token in tokens:
-            if token in phoneme_map:
+            if token in self.pause_durations_ms or token == "\n":
+                pause = self.pause_durations_ms.get(token, 200)
+                pause = pause / effective_rate
+                units.append({
+                    "token": token,
+                    "freq": 0,
+                    "duration_ms": float(pause),
+                    "amplitude": prosody['amplitude'],
+                    "is_pause": True
+                })
+            elif token in phoneme_map:
                 phoneme = phoneme_map[token]
                 freq = phoneme['freq'] * effective_pitch
                 duration = phoneme['duration'] / effective_rate
@@ -292,22 +302,15 @@ class UniversalTTSEngine:
                     "token": token,
                     "freq": freq,
                     "duration_ms": float(duration),
+                    "amplitude": prosody['amplitude'],
                     "is_pause": freq == 0
-                })
-            elif token in self.pause_durations_ms or token == "\n":
-                pause = self.pause_durations_ms.get(token, 200)
-                pause = pause / effective_rate
-                units.append({
-                    "token": token,
-                    "freq": 0,
-                    "duration_ms": float(pause),
-                    "is_pause": True
                 })
             else:
                 units.append({
                     "token": token,
                     "freq": 0,
                     "duration_ms": 50.0,
+                    "amplitude": prosody['amplitude'],
                     "is_pause": True
                 })
 
@@ -347,7 +350,7 @@ class UniversalTTSEngine:
                 segment = self._generate_tone(
                     unit["freq"],
                     unit["duration_ms"],
-                    1.0,
+                    unit.get("amplitude", 1.0),
                     emotion
                 )
             else:
